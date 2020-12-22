@@ -1,0 +1,129 @@
+import pandas as pd
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+import os
+import numpy as np
+
+PATH_TO_DATA_FILE = 'data12_0.xlsx'
+
+from sklearn.impute import SimpleImputer
+
+
+def get_data(filename=PATH_TO_DATA_FILE):
+    xl_file = pd.read_excel(filename, '1', engine='openpyxl')
+    xl_file2 = pd.read_excel(filename, '2', engine='openpyxl')
+
+    imputer = SimpleImputer(missing_values=0, strategy='median', verbose=1)
+
+    X1 = xl_file.copy()
+    transformed_values = imputer.fit_transform(X1)
+    column = X1.columns
+    newdf1 = pd.DataFrame(transformed_values, columns=column)
+
+    X2 = xl_file2.copy()
+    transformed_values = imputer.fit_transform(X2)
+    column = X2.columns
+    newdf2 = pd.DataFrame(transformed_values, columns=column)
+
+    return newdf1, newdf2
+
+
+def reduce_emission_with_IQR(df):
+    Q1 = df.quantile(0.25)
+    Q3 = df.quantile(0.75)
+    IQR = Q3 - Q1
+
+    df_filtered = df[~((df < (Q1 - 1.5 * IQR)) | (df > (Q3 + 1.5 * IQR))).any(axis=1)]
+    return df_filtered
+
+
+def draw_samples_on_scatter_plot(PCs_df, sample_1_size, description):
+    plt.scatter(x=PCs_df.iloc[:sample_1_size, 0],
+                y=PCs_df.iloc[:sample_1_size, 1],
+                c='g',
+                label='выборка 1',
+                alpha=0.4)
+    plt.scatter(x=PCs_df.iloc[sample_1_size:, 0],
+                y=PCs_df.iloc[sample_1_size:, 1],
+                c='r',
+                label='выборка 2',
+                alpha=0.4)
+    plt.legend(loc='upper right')
+    plt.xlabel('Первая компонента')
+    plt.ylabel('Вторая компонента')
+    plt.title(f'График входных данных с использованием двух первых компонент \n {description}')
+    plt.show()
+
+
+def draw_PCA_variance(pca, description):
+    PC_num = range(pca.n_components_)
+    plt.bar(PC_num, pca.explained_variance_ratio_, color='black')  # дисперсии, являющиеся собственными значениями
+    plt.xlabel('Индекс признака')
+    plt.ylabel('Дисперсии')
+    plt.xticks(PC_num)
+    plt.title(f'Распределение дисперсий методом главным компонент \n {description}')
+    plt.show()
+
+
+def analyze_component(pca, component_idx, features):
+    PC = np.array(pca.components_[component_idx])
+    top_features_idxs = np.argsort(np.abs(PC))[::-1]
+    top_features = np.array(features)[top_features_idxs]
+    return top_features, PC[top_features_idxs]
+
+
+def main():
+    sample_1, sample_2 = get_data()
+    features = sample_1.columns.values
+
+    sample_1 = reduce_emission_with_IQR(sample_1)
+    sample_2 = reduce_emission_with_IQR(sample_2)
+
+    all_samples_df = sample_1.append(sample_2)
+    print(all_samples_df.head(5))
+    all_samples_df = pd.DataFrame(StandardScaler().fit_transform(all_samples_df))
+    print(all_samples_df.head(5))
+
+    n_features = len(features)
+    sample_1_size = len(sample_1)
+
+    pca = PCA(n_components=n_features)
+    pcs_df = pd.DataFrame(pca.fit_transform(all_samples_df))  # получаем преобразованные данные с помощью РСА
+
+    description = 'Данные нормализированы, выбросы устранены'
+    draw_PCA_variance(pca, description=description)
+    draw_samples_on_scatter_plot(pcs_df, sample_1_size, description=description)
+
+    pca_1 = PCA(n_components=n_features)
+    pca_1.fit(sample_1)
+
+    pca_2 = PCA(n_components=n_features)
+    pca_2.fit(sample_2)
+
+    print("Выборка 1")
+    top_features_pc1, top_coeffs_pc1 = analyze_component(pca_1, 0, features)
+    print()
+
+    d1 = pd.DataFrame.from_dict({'Признак': top_features_pc1,
+                                 'Вклад первой компоненты': top_coeffs_pc1})
+    print(d1)
+
+    print("Выборка 2")
+    top_features_pc1, top_coeffs_pc1 = analyze_component(pca_2, 0, features)
+    print()
+
+    d2 = pd.DataFrame.from_dict({'Признак': top_features_pc1,
+                                 'Вклад первой компоненты': top_coeffs_pc1})
+    print(d2)
+
+    print("Выборка 1 и 2")
+    top_features_pc1, top_coeffs_pc1 = analyze_component(pca, 0, features)
+    print()
+
+    d3 = pd.DataFrame.from_dict({'Признак': top_features_pc1,
+                                 'Вклад первой компоненты': top_coeffs_pc1})
+    print(d3)
+
+if __name__ == '__main__':
+    main()
